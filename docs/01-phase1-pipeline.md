@@ -22,7 +22,7 @@ Schedule → Feed list → Fetch RSS → Normalize+build request
         → Claude (curate & write) → Parse+split → Bannerbear → Approval queue
                                                                      │  (you tap Approve)
                                                                      ▼
-                                            Telegram trigger → Approved? → Load draft → Ayrshare → Confirm
+                                  Telegram trigger → Approved? → Recover draft → Ayrshare → Confirm
 ```
 
 ---
@@ -69,18 +69,21 @@ Renders one branded news card per story from your template, passing `headline`
 and `source` as modifications. The synchronous endpoint returns `image_url`
 directly (no polling). Swap in Placid if you prefer.
 
-**8. Send to approval queue** (`telegram` sendMessage)
-Posts each draft (source, score, title, the X copy, the card URL, the source
-link) to your Telegram chat. **To make Approve/Reject buttons work**, open this
-node and add an inline keyboard with two buttons whose `callback_data` is
-`approve:<draftId>` and `reject:<draftId>`, and write each draft to a store
-(Airtable/DB) keyed by `draftId`. (Kept off the skeleton so the JSON imports
-cleanly across n8n versions.)
+**8. Build approval message** (`code`, per story)
+Combines the story (from *Parse + split stories*) with the Bannerbear
+`image_url` into one Telegram message: a human-readable preview **plus a hidden
+machine block** (`--AINEWS-- {json} --END--`) carrying the URL, image, and the
+four per-platform variants. This is what makes the approval loop **store-free** —
+the draft travels inside the message itself.
 
-> Prefer a board to a chat? Replace this node with an **Airtable** node that
-> creates a row per draft with status `pending`, and approve by flipping the
-> status. Then trigger Workflow B from an Airtable "status = approved" poll
-> instead of the Telegram trigger.
+**9. Send to approval queue** (`telegram` sendMessage)
+Posts each draft to your chat with a **✅ Approve / 🚫 Reject** inline keyboard
+(`callback_data` = `approve` / `reject`). On n8n Cloud the public URL is
+automatic, so the buttons call back with no extra setup.
+
+> Want a board + history instead? Swap this for an **Airtable** node (one row per
+> draft, status `pending`) and approve by flipping the row — see the Airtable
+> path in `deploy/DEPLOY.md`.
 
 ---
 
@@ -93,11 +96,12 @@ Wakes when you tap a button.
 True branch when `callback_query.data` starts with `approve:`; false branch marks
 the draft rejected.
 
-**3. Load draft by id** (`code`)
-Extracts `draftId` from the callback data. **Replace the placeholder** with a
-real lookup of the stored draft (an Airtable "get" node before this, or an HTTP
-call to your DB), producing the Ayrshare body: `post`, `platforms`, `mediaUrls`
-(the Bannerbear `image_url`).
+**3. Recover draft from message** (`code`)
+Reads the hidden `--AINEWS-- … --END--` block out of the original Telegram
+message (`callback_query.message.text`), parses it, and builds the Ayrshare body:
+`post`, `platforms` (`twitter`/`linkedin`/`instagram`), and `mediaUrls` (the
+Bannerbear `image_url`). No external store — everything needed was carried in the
+message.
 
 **4. Ayrshare — publish** (`httpRequest` → `POST /api/post`)
 One call fans out to X, LinkedIn, Instagram, and YouTube. Auth is a Header Auth

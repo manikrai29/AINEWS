@@ -46,14 +46,21 @@ docs/
   03-sources.md                         # official sources + the two ingestion paths
   04-runbook.md                         # setup, credentials, costs, AI-labeling
 deploy/
+  N8N_CLOUD.md                          # managed-host guide (approvals work out of the box)
   docker-compose.yml                    # one-command self-hosted n8n
   .env.example                          # host config (keys go in n8n credentials, not here)
-  DEPLOY.md                             # step-by-step: up → import → credentials → run
+  DEPLOY.md                             # self-host step-by-step: up → import → credentials → run
 scripts/
   test-logic.mjs                        # runs the real Code-node logic against sample data
 ```
 
 ## Quick start (live host)
+
+**On n8n Cloud (recommended):** follow `deploy/N8N_CLOUD.md` — import the two
+workflows, add credentials, activate. The public URL is automatic, so the
+Telegram Approve/Reject buttons work with no extra setup.
+
+**Self-host with Docker:**
 
 ```bash
 cd deploy && cp .env.example .env      # set N8N_ENCRYPTION_KEY + TZ

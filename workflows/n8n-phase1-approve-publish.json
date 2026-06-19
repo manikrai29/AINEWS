@@ -2,8 +2,20 @@
   "name": "AI News — Phase 1 — Approve & Publish",
   "active": false,
   "settings": { "executionOrder": "v1" },
-  "meta": { "templateNote": "Skeleton. The generate workflow should attach an inline keyboard with callback_data like 'approve:<draftId>' / 'reject:<draftId>' and store each draft (Airtable/DB) keyed by draftId. This workflow reacts to the button, looks up the draft, and publishes via Ayrshare. Wire Telegram + Ayrshare credentials and your draft store. See docs/01-phase1-pipeline.md." },
+  "meta": {},
   "nodes": [
+    {
+      "parameters": {
+        "content": "## AI News — Approve & Publish\n\nReacts to the **Approve / Reject** buttons from the Generate workflow.\n\nNo database: the publish-ready content is recovered from the original Telegram message's hidden `--AINEWS-- … --END--` block.\n\n**Wire:** Telegram credential (same bot), Ayrshare credential (Header Auth, Bearer), and the chat id on the confirm/reject nodes. On n8n Cloud the public URL is automatic, so the Telegram trigger just works once this workflow is **active**.",
+        "height": 320,
+        "width": 420
+      },
+      "id": "node-sticky",
+      "name": "Setup notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [ -40, 40 ]
+    },
     {
       "parameters": {
         "updates": [ "callback_query" ],
@@ -13,7 +25,7 @@
       "name": "On approval button",
       "type": "n8n-nodes-base.telegramTrigger",
       "typeVersion": 1.2,
-      "position": [ 0, 300 ],
+      "position": [ 0, 320 ],
       "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED", "name": "Telegram Bot" } }
     },
     {
@@ -23,8 +35,8 @@
           "conditions": [
             {
               "leftValue": "={{ $json.callback_query.data }}",
-              "rightValue": "approve:",
-              "operator": { "type": "string", "operation": "startsWith" }
+              "rightValue": "approve",
+              "operator": { "type": "string", "operation": "equals" }
             }
           ],
           "combinator": "and"
@@ -35,18 +47,18 @@
       "name": "Approved?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [ 240, 300 ]
+      "position": [ 240, 320 ]
     },
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// callback_data looks like 'approve:<draftId>'. Pull the id, then\n// look up the stored draft (Airtable/DB) for this id. Placeholder below.\nconst data=$json.callback_query.data||'';\nconst draftId=data.split(':')[1]||'';\n// TODO: replace with a real lookup (Airtable node before this, or HTTP).\nconst draft={ post: 'REPLACE with stored post text for '+draftId, platforms:['twitter','linkedin','instagram'], mediaUrls:[] };\nreturn [{ json: { draftId, body: draft } }];"
+        "jsCode": "const text=($json.callback_query&&$json.callback_query.message&&$json.callback_query.message.text)||'';const parts=text.split('--AINEWS--');const seg=parts[1]?parts[1].split('--END--')[0].trim():'';let p={};try{p=JSON.parse(seg);}catch(e){}const post=(p.platforms&&(p.platforms.linkedin||p.platforms.x))||'';const body={post:post,platforms:['twitter','linkedin','instagram'],mediaUrls:p.image_url?[p.image_url]:[]};return {json:{draftId:p.url||'',body}};"
       },
-      "id": "node-lookup",
-      "name": "Load draft by id",
+      "id": "node-recover",
+      "name": "Recover draft from message",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [ 480, 200 ]
+      "position": [ 480, 220 ]
     },
     {
       "parameters": {
@@ -67,7 +79,7 @@
       "name": "Ayrshare — publish",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [ 720, 200 ],
+      "position": [ 720, 220 ],
       "credentials": { "httpHeaderAuth": { "id": "REPLACE_AYRSHARE_CRED", "name": "Ayrshare Bearer" } }
     },
     {
@@ -75,14 +87,14 @@
         "resource": "message",
         "operation": "sendMessage",
         "chatId": "REPLACE_TELEGRAM_CHAT_ID",
-        "text": "={{ '✅ Published draft ' + ($('Load draft by id').item.json.draftId || '') }}",
+        "text": "={{ '✅ Published: ' + ($('Recover draft from message').item.json.draftId || '') }}",
         "additionalFields": {}
       },
       "id": "node-confirm",
       "name": "Confirm published",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [ 960, 200 ],
+      "position": [ 960, 220 ],
       "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED", "name": "Telegram Bot" } }
     },
     {
@@ -90,14 +102,14 @@
         "resource": "message",
         "operation": "sendMessage",
         "chatId": "REPLACE_TELEGRAM_CHAT_ID",
-        "text": "={{ '🚫 Rejected: ' + ($json.callback_query.data || '') }}",
+        "text": "🚫 Rejected — not published.",
         "additionalFields": {}
       },
       "id": "node-rejected",
       "name": "Mark rejected",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [ 480, 420 ],
+      "position": [ 480, 440 ],
       "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED", "name": "Telegram Bot" } }
     }
   ],
@@ -105,11 +117,11 @@
     "On approval button": { "main": [ [ { "node": "Approved?", "type": "main", "index": 0 } ] ] },
     "Approved?": {
       "main": [
-        [ { "node": "Load draft by id", "type": "main", "index": 0 } ],
+        [ { "node": "Recover draft from message", "type": "main", "index": 0 } ],
         [ { "node": "Mark rejected", "type": "main", "index": 0 } ]
       ]
     },
-    "Load draft by id": { "main": [ [ { "node": "Ayrshare — publish", "type": "main", "index": 0 } ] ] },
+    "Recover draft from message": { "main": [ [ { "node": "Ayrshare — publish", "type": "main", "index": 0 } ] ] },
     "Ayrshare — publish": { "main": [ [ { "node": "Confirm published", "type": "main", "index": 0 } ] ] }
   }
 }

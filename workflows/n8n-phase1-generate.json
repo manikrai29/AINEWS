@@ -2,8 +2,20 @@
   "name": "AI News — Phase 1 — Generate Drafts",
   "active": false,
   "settings": { "executionOrder": "v1" },
-  "meta": { "templateNote": "Skeleton workflow. Import into n8n, then wire credentials (Anthropic header auth, Bannerbear header auth, Telegram). Node typeVersions may need adjusting to your n8n version. See docs/01-phase1-pipeline.md." },
+  "meta": {},
   "nodes": [
+    {
+      "parameters": {
+        "content": "## AI News — Generate Drafts\n\n**Wire these before running:**\n1. Credentials: Anthropic (Header Auth, x-api-key), Bannerbear (Header Auth, Bearer).\n2. Telegram credential + set the chat id on **Send to approval queue**.\n3. Bannerbear template id on **Bannerbear — render card**.\n\nThe message sent to Telegram carries a hidden `--AINEWS-- … --END--` JSON block; the **Approve & Publish** workflow reads it back on Approve. No database needed.",
+        "height": 320,
+        "width": 420
+      },
+      "id": "node-sticky",
+      "name": "Setup notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [ -40, 40 ]
+    },
     {
       "parameters": {
         "rule": { "interval": [ { "field": "days", "triggerAtHour": 8 } ] }
@@ -102,17 +114,41 @@
     },
     {
       "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const s=$('Parse + split stories').item.json;const img=$json.image_url||'';const payload={url:s.url,image_url:img,platforms:s.platforms};const msg=['📰 '+s.source+'  (score '+s.score+')',s.title,'',s.summary,'','— X —',s.platforms.x,'','Card: '+(img||'n/a'),'','--AINEWS--',JSON.stringify(payload),'--END--'].join('\\n');return {json:{message:msg,draftId:s.url}};"
+      },
+      "id": "node-buildmsg",
+      "name": "Build approval message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 1540, 300 ]
+    },
+    {
+      "parameters": {
         "resource": "message",
         "operation": "sendMessage",
         "chatId": "REPLACE_TELEGRAM_CHAT_ID",
-        "text": "={{ '📰 ' + $('Parse + split stories').item.json.source + ' (score ' + $('Parse + split stories').item.json.score + ')\\n\\n' + $('Parse + split stories').item.json.title + '\\n\\n— X —\\n' + $('Parse + split stories').item.json.platforms.x + '\\n\\nCard: ' + ($json.image_url || 'n/a') + '\\nSource: ' + $('Parse + split stories').item.json.url }}",
+        "text": "={{ $json.message }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  { "text": "✅ Approve", "additionalFields": { "callback_data": "approve" } },
+                  { "text": "🚫 Reject", "additionalFields": { "callback_data": "reject" } }
+                ]
+              }
+            }
+          ]
+        },
         "additionalFields": {}
       },
       "id": "node-telegram",
       "name": "Send to approval queue",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [ 1540, 300 ],
+      "position": [ 1760, 300 ],
       "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED", "name": "Telegram Bot" } }
     }
   ],
@@ -123,6 +159,7 @@
     "Normalize + build request": { "main": [ [ { "node": "Claude — curate & write", "type": "main", "index": 0 } ] ] },
     "Claude — curate & write": { "main": [ [ { "node": "Parse + split stories", "type": "main", "index": 0 } ] ] },
     "Parse + split stories": { "main": [ [ { "node": "Bannerbear — render card", "type": "main", "index": 0 } ] ] },
-    "Bannerbear — render card": { "main": [ [ { "node": "Send to approval queue", "type": "main", "index": 0 } ] ] }
+    "Bannerbear — render card": { "main": [ [ { "node": "Build approval message", "type": "main", "index": 0 } ] ] },
+    "Build approval message": { "main": [ [ { "node": "Send to approval queue", "type": "main", "index": 0 } ] ] }
   }
 }
