@@ -1,0 +1,34 @@
+# AINEWS — self-host n8n. Persistent, durable, runs anywhere Docker runs.
+#   1) cp .env.example .env  &&  edit .env  (set N8N_ENCRYPTION_KEY + host)
+#   2) docker compose up -d
+#   3) open http://localhost:5678  (or your domain) → create the owner login
+#   4) import both workflows (UI drag-drop, or the CLI one-liner in DEPLOY.md)
+#
+# API keys are NOT in this file. Add them as n8n Credentials in the UI (see DEPLOY.md).
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - GENERIC_TIMEZONE=${TZ:-UTC}
+      - TZ=${TZ:-UTC}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      # Public base URL — REQUIRED for the Telegram approval trigger (Workflow B).
+      # For Workflow A (generate) you don't need a public URL. See DEPLOY.md.
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
+      # Encrypts your saved credentials. Generate once, then NEVER change it
+      # (changing it makes existing credentials undecryptable). openssl rand -hex 24
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_RUNNERS_ENABLED=true
+    volumes:
+      - n8n_data:/home/node/.n8n
+      # Mounted read-only so you can import via the CLI one-liner in DEPLOY.md.
+      - ../workflows:/workflows:ro
+
+volumes:
+  n8n_data:

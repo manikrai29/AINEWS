@@ -45,18 +45,32 @@ docs/
   02-character-voice-brief.md           # ASI character image prompt + ElevenLabs voice brief
   03-sources.md                         # official sources + the two ingestion paths
   04-runbook.md                         # setup, credentials, costs, AI-labeling
+deploy/
+  docker-compose.yml                    # one-command self-hosted n8n
+  .env.example                          # host config (keys go in n8n credentials, not here)
+  DEPLOY.md                             # step-by-step: up → import → credentials → run
+scripts/
+  test-logic.mjs                        # runs the real Code-node logic against sample data
 ```
 
-## Quick start
+## Quick start (live host)
 
-1. Stand up n8n and import both files from `workflows/` (see `docs/04-runbook.md`).
-2. Create the four credentials (Anthropic, Bannerbear, Ayrshare, Telegram) and
+```bash
+cd deploy && cp .env.example .env      # set N8N_ENCRYPTION_KEY + TZ
+docker compose up -d                   # n8n live at http://localhost:5678
+docker compose exec n8n n8n import:workflow --separate --input=/workflows
+```
+
+Then, per `deploy/DEPLOY.md`:
+1. Create the four credentials (Anthropic, Bannerbear, Ayrshare, Telegram) and
    fill the `REPLACE_…` placeholders.
-3. Run **Workflow A** once — drafts land in your Telegram chat.
-4. Add Approve/Reject buttons + a draft store, then approving a draft fires
-   **Workflow B** and publishes everywhere.
-5. Lock your character + voice (`docs/02-character-voice-brief.md`) and add the
+2. Run **Workflow A** once — drafts land in your Telegram chat.
+3. Wire approvals (Telegram buttons with a public URL, or the no-inbound Airtable
+   polling path in `DEPLOY.md`) — then **Workflow B** publishes everywhere.
+4. Lock your character + voice (`docs/02-character-voice-brief.md`) and add the
    Phase 2 video step.
+
+Sanity-check the transformation logic anytime with `node scripts/test-logic.mjs`.
 
 ## Sources (official only)
 
