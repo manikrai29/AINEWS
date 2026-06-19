@@ -1,0 +1,83 @@
+{
+  "updated": "2026-06-19",
+  "policy": "Official sources only. Aggregators may be used to discover stories, but every published item must be verified against the primary post before it goes out.",
+  "ingestion_notes": {
+    "rss": "Read directly with the n8n RSS Read node.",
+    "html": "No native RSS feed exists. Read the listed index page with an HTTP Request node + HTML Extract node (or a feed-generator service), then verify against the primary post.",
+    "huggingface_caveat": "The Hugging Face feed omits per-item <link> tags in some readers; derive the canonical URL from the item guid if link is empty."
+  },
+  "sources": [
+    {
+      "name": "OpenAI",
+      "type": "rss",
+      "url": "https://openai.com/news/rss.xml",
+      "site": "https://openai.com/news",
+      "verified": true
+    },
+    {
+      "name": "Anthropic",
+      "type": "html",
+      "url": "https://www.anthropic.com/news",
+      "site": "https://www.anthropic.com/news",
+      "rss": null,
+      "verified": false,
+      "note": "No official native RSS. Read the news index page (HTTP + HTML Extract). Engineering posts: https://www.anthropic.com/engineering"
+    },
+    {
+      "name": "Google DeepMind",
+      "type": "rss",
+      "url": "https://deepmind.google/blog/rss.xml",
+      "site": "https://deepmind.google/blog",
+      "verified": true
+    },
+    {
+      "name": "Google Research",
+      "type": "rss",
+      "url": "https://research.googleblog.com/feeds/posts/default?alt=rss",
+      "site": "https://research.google/blog",
+      "verified": true,
+      "note": "Blogger-hosted; the /feeds/posts/default?alt=rss path is the standard RSS endpoint."
+    },
+    {
+      "name": "Meta AI",
+      "type": "html",
+      "url": "https://ai.meta.com/blog/",
+      "site": "https://ai.meta.com/blog/",
+      "rss": null,
+      "verified": false,
+      "note": "No confirmed official native RSS. Read the blog index (HTTP + HTML Extract)."
+    },
+    {
+      "name": "Microsoft AI",
+      "type": "rss",
+      "url": "https://blogs.microsoft.com/ai/feed/",
+      "site": "https://blogs.microsoft.com/ai/",
+      "verified": false,
+      "note": "WordPress site; /feed/ is the standard endpoint. Confirm it loads before relying on it."
+    },
+    {
+      "name": "Mistral AI",
+      "type": "html",
+      "url": "https://mistral.ai/news/",
+      "site": "https://mistral.ai/news/",
+      "rss": null,
+      "verified": false,
+      "note": "No native RSS. Read the news index (HTTP + HTML Extract)."
+    },
+    {
+      "name": "Hugging Face",
+      "type": "rss",
+      "url": "https://huggingface.co/blog/feed.xml",
+      "site": "https://huggingface.co/blog",
+      "verified": true,
+      "note": "Feed omits per-item <link> in some readers; fall back to guid for the URL."
+    },
+    {
+      "name": "NVIDIA Developer",
+      "type": "rss",
+      "url": "https://developer.nvidia.com/blog/feed",
+      "site": "https://developer.nvidia.com/blog",
+      "verified": true
+    }
+  ]
+}

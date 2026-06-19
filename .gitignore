@@ -1,0 +1,25 @@
+# Secrets — never commit API keys or tokens
+.env
+.env.*
+*.local
+secrets/
+credentials/
+
+# n8n local data (if self-hosting in this repo)
+.n8n/
+n8n-data/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Generated media (renders, audio, video)
+out/
+renders/
+*.mp4
+*.mp3
+*.wav
+*.png.tmp

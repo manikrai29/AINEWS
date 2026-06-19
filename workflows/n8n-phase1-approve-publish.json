@@ -1,0 +1,115 @@
+{
+  "name": "AI News — Phase 1 — Approve & Publish",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "meta": { "templateNote": "Skeleton. The generate workflow should attach an inline keyboard with callback_data like 'approve:<draftId>' / 'reject:<draftId>' and store each draft (Airtable/DB) keyed by draftId. This workflow reacts to the button, looks up the draft, and publishes via Ayrshare. Wire Telegram + Ayrshare credentials and your draft store. See docs/01-phase1-pipeline.md." },
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [ "callback_query" ],
+        "additionalFields": {}
+      },
+      "id": "node-tg-trigger",
+      "name": "On approval button",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [ 0, 300 ],
+      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED", "name": "Telegram Bot" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.callback_query.data }}",
+              "rightValue": "approve:",
+              "operator": { "type": "string", "operation": "startsWith" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if",
+      "name": "Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [ 240, 300 ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// callback_data looks like 'approve:<draftId>'. Pull the id, then\n// look up the stored draft (Airtable/DB) for this id. Placeholder below.\nconst data=$json.callback_query.data||'';\nconst draftId=data.split(':')[1]||'';\n// TODO: replace with a real lookup (Airtable node before this, or HTTP).\nconst draft={ post: 'REPLACE with stored post text for '+draftId, platforms:['twitter','linkedin','instagram'], mediaUrls:[] };\nreturn [{ json: { draftId, body: draft } }];"
+      },
+      "id": "node-lookup",
+      "name": "Load draft by id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 480, 200 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.ayrshare.com/api/post",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [ { "name": "content-type", "value": "application/json" } ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "id": "node-ayrshare",
+      "name": "Ayrshare — publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [ 720, 200 ],
+      "credentials": { "httpHeaderAuth": { "id": "REPLACE_AYRSHARE_CRED", "name": "Ayrshare Bearer" } }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "REPLACE_TELEGRAM_CHAT_ID",
+        "text": "={{ '✅ Published draft ' + ($('Load draft by id').item.json.draftId || '') }}",
+        "additionalFields": {}
+      },
+      "id": "node-confirm",
+      "name": "Confirm published",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [ 960, 200 ],
+      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED", "name": "Telegram Bot" } }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "REPLACE_TELEGRAM_CHAT_ID",
+        "text": "={{ '🚫 Rejected: ' + ($json.callback_query.data || '') }}",
+        "additionalFields": {}
+      },
+      "id": "node-rejected",
+      "name": "Mark rejected",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [ 480, 420 ],
+      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED", "name": "Telegram Bot" } }
+    }
+  ],
+  "connections": {
+    "On approval button": { "main": [ [ { "node": "Approved?", "type": "main", "index": 0 } ] ] },
+    "Approved?": {
+      "main": [
+        [ { "node": "Load draft by id", "type": "main", "index": 0 } ],
+        [ { "node": "Mark rejected", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Load draft by id": { "main": [ [ { "node": "Ayrshare — publish", "type": "main", "index": 0 } ] ] },
+    "Ayrshare — publish": { "main": [ [ { "node": "Confirm published", "type": "main", "index": 0 } ] ] }
+  }
+}

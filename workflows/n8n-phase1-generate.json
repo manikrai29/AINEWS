@@ -1,0 +1,128 @@
+{
+  "name": "AI News — Phase 1 — Generate Drafts",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "meta": { "templateNote": "Skeleton workflow. Import into n8n, then wire credentials (Anthropic header auth, Bannerbear header auth, Telegram). Node typeVersions may need adjusting to your n8n version. See docs/01-phase1-pipeline.md." },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [ { "field": "days", "triggerAtHour": 8 } ] }
+      },
+      "id": "node-schedule",
+      "name": "Daily 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [ 0, 300 ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n {json:{source:'OpenAI',url:'https://openai.com/news/rss.xml'}},\n {json:{source:'Google DeepMind',url:'https://deepmind.google/blog/rss.xml'}},\n {json:{source:'Google Research',url:'https://research.googleblog.com/feeds/posts/default?alt=rss'}},\n {json:{source:'Hugging Face',url:'https://huggingface.co/blog/feed.xml'}},\n {json:{source:'NVIDIA Developer',url:'https://developer.nvidia.com/blog/feed'}},\n {json:{source:'Microsoft AI',url:'https://blogs.microsoft.com/ai/feed/'}}\n];"
+      },
+      "id": "node-feedlist",
+      "name": "Feed list (native RSS)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 220, 300 ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {}
+      },
+      "id": "node-rss",
+      "name": "Fetch RSS",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [ 440, 300 ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const DAY=86400000;const now=Date.now();\nconst srcFor=(u)=>{u=(u||'').toLowerCase();if(u.includes('openai.com'))return 'OpenAI';if(u.includes('deepmind.google'))return 'Google DeepMind';if(u.includes('googleblog.com')||u.includes('research.google'))return 'Google Research';if(u.includes('huggingface.co'))return 'Hugging Face';if(u.includes('nvidia.com'))return 'NVIDIA';if(u.includes('microsoft.com'))return 'Microsoft AI';return 'Unknown';};\nconst seen=new Set();const stories=[];\nfor(const it of $input.all()){const j=it.json;const url=(j.link||j.url||j.guid||'').trim();const title=(j.title||'').trim();const pub=j.isoDate||j.pubDate||j.published||null;const ts=pub?Date.parse(pub):NaN;if(!title||!url)continue;if(!Number.isNaN(ts)&&(now-ts)>DAY)continue;const key=url.split('?')[0];if(seen.has(key))continue;seen.add(key);const snip=(j.contentSnippet||j.summary||j.content||'').replace(/\\s+/g,' ').trim().slice(0,600);stories.push({source:srcFor(url),title,url,publishedAt:pub,snippet:snip});}\nconst SYSTEM=[\"You are the editor of an AI-news brand. You receive a JSON array of candidate stories collected today from official AI-lab sources.\",\"\",\"Your job:\",\"1. DEDUPE stories covering the same announcement into one.\",\"2. RANK; keep only genuinely significant items (model/product launches, major research, safety/policy, notable tooling). Drop minor or promotional posts.\",\"3. SELECT the top 5 (fewer if the day is quiet; never pad).\",\"4. For each, WRITE: summary (2-3 factual sentences, no hype or emojis), score (1-100), and platforms.\",\"\",\"Per-platform: x <=280 chars with the link and 1-2 hashtags; linkedin 3-5 professional sentences with the link at the end; instagram 2-3 caption lines with up to 5 hashtags and no link in the body; youtube a 30-45 second spoken Shorts/Reels script for the virtual ASI character (plain narration, no stage directions).\",\"\",\"Hard rules: use ONLY facts in each candidate title and snippet; never invent details, numbers, or quotes; keep every claim attributable to the official source; return ONLY the JSON object from the schema.\"].join('\\n');\nconst SCHEMA={type:'object',properties:{stories:{type:'array',items:{type:'object',properties:{source:{type:'string'},title:{type:'string'},url:{type:'string'},summary:{type:'string'},score:{type:'integer'},platforms:{type:'object',properties:{x:{type:'string'},linkedin:{type:'string'},instagram:{type:'string'},youtube:{type:'string'}},required:['x','linkedin','instagram','youtube'],additionalProperties:false}},required:['source','title','url','summary','score','platforms'],additionalProperties:false}}},required:['stories'],additionalProperties:false};\nconst body={model:'claude-sonnet-4-6',max_tokens:8000,system:SYSTEM,messages:[{role:'user',content:\"Today's candidate stories (JSON):\\n\\n\"+JSON.stringify(stories)+\"\\n\\nReturn the selected stories.\"}],output_config:{format:{type:'json_schema',schema:SCHEMA}}};\nreturn [{json:{count:stories.length,stories,body}}];"
+      },
+      "id": "node-normalize",
+      "name": "Normalize + build request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 660, 300 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "id": "node-claude",
+      "name": "Claude — curate & write",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [ 880, 300 ],
+      "credentials": { "httpHeaderAuth": { "id": "REPLACE_ANTHROPIC_CRED", "name": "Anthropic x-api-key" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const out=[];\nfor(const it of $input.all()){const content=(it.json.content)||[];const tb=content.find(b=>b.type==='text');if(!tb)continue;let parsed;try{parsed=JSON.parse(tb.text);}catch(e){continue;}for(const s of (parsed.stories||[])){out.push({json:s});}}\nreturn out;"
+      },
+      "id": "node-parse",
+      "name": "Parse + split stories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 1100, 300 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sync.api.bannerbear.com/v2/images",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ template: 'REPLACE_BANNERBEAR_TEMPLATE_ID', modifications: [ { name: 'headline', text: $json.title }, { name: 'source', text: $json.source } ] }) }}",
+        "options": {}
+      },
+      "id": "node-bannerbear",
+      "name": "Bannerbear — render card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [ 1320, 300 ],
+      "credentials": { "httpHeaderAuth": { "id": "REPLACE_BANNERBEAR_CRED", "name": "Bannerbear Bearer" } }
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "REPLACE_TELEGRAM_CHAT_ID",
+        "text": "={{ '📰 ' + $('Parse + split stories').item.json.source + ' (score ' + $('Parse + split stories').item.json.score + ')\\n\\n' + $('Parse + split stories').item.json.title + '\\n\\n— X —\\n' + $('Parse + split stories').item.json.platforms.x + '\\n\\nCard: ' + ($json.image_url || 'n/a') + '\\nSource: ' + $('Parse + split stories').item.json.url }}",
+        "additionalFields": {}
+      },
+      "id": "node-telegram",
+      "name": "Send to approval queue",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [ 1540, 300 ],
+      "credentials": { "telegramApi": { "id": "REPLACE_TELEGRAM_CRED", "name": "Telegram Bot" } }
+    }
+  ],
+  "connections": {
+    "Daily 08:00": { "main": [ [ { "node": "Feed list (native RSS)", "type": "main", "index": 0 } ] ] },
+    "Feed list (native RSS)": { "main": [ [ { "node": "Fetch RSS", "type": "main", "index": 0 } ] ] },
+    "Fetch RSS": { "main": [ [ { "node": "Normalize + build request", "type": "main", "index": 0 } ] ] },
+    "Normalize + build request": { "main": [ [ { "node": "Claude — curate & write", "type": "main", "index": 0 } ] ] },
+    "Claude — curate & write": { "main": [ [ { "node": "Parse + split stories", "type": "main", "index": 0 } ] ] },
+    "Parse + split stories": { "main": [ [ { "node": "Bannerbear — render card", "type": "main", "index": 0 } ] ] },
+    "Bannerbear — render card": { "main": [ [ { "node": "Send to approval queue", "type": "main", "index": 0 } ] ] }
+  }
+}
